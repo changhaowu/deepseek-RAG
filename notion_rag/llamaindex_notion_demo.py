@@ -3,6 +3,7 @@ import logging
 from llama_index.core import SummaryIndex
 from llama_index.readers.notion import NotionPageReader
 from IPython.display import Markdown, display
+import sys
 
 # 启用详细日志
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
