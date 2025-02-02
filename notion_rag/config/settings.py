@@ -12,10 +12,9 @@ MONGO_DB_NAME = "notion_rag"
 MONGO_COLLECTION_PAGES = "notion_pages"
 MONGO_COLLECTION_CHUNKS = "notion_chunks"
 
-# Qdrant配置
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
-QDRANT_COLLECTION_NAME = "notion_vectors"
+# ChromaDB配置
+CHROMA_PERSIST_DIR = "chroma_db"
+CHROMA_COLLECTION_NAME = "notion_vectors"
 
 # 模型配置
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"

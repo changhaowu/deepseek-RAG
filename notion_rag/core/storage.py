@@ -1,23 +1,21 @@
 from typing import List, Dict, Any
 from pymongo import MongoClient
-from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance, PointStruct
+import chromadb
+from chromadb.config import Settings
 from config.settings import *
 
 class StorageManager:
     def __init__(self):
         self.mongo_client = MongoClient(MONGO_URI)
-        self.qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-        self._init_qdrant()
+        self.chroma_client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
+        self._init_chroma()
         
-    def _init_qdrant(self):
-        """初始化Qdrant集合"""
-        collections = [c.name for c in self.qdrant_client.get_collections().collections]
-        if QDRANT_COLLECTION_NAME not in collections:
-            self.qdrant_client.create_collection(
-                collection_name=QDRANT_COLLECTION_NAME,
-                vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE)
-            )
+    def _init_chroma(self):
+        """初始化ChromaDB集合"""
+        try:
+            self.collection = self.chroma_client.get_collection(CHROMA_COLLECTION_NAME)
+        except:
+            self.collection = self.chroma_client.create_collection(CHROMA_COLLECTION_NAME)
             
     def store_pages(self, pages: List[Dict[str, Any]]):
         """存储原始页面到MongoDB"""
@@ -30,7 +28,7 @@ class StorageManager:
             )
             
     def store_chunks(self, chunks: List[Dict[str, Any]]):
-        """存储分块到MongoDB和Qdrant"""
+        """存储分块到MongoDB和ChromaDB"""
         # 存储到MongoDB
         collection = self.mongo_client[MONGO_DB_NAME][MONGO_COLLECTION_CHUNKS]
         for chunk in chunks:
@@ -40,21 +38,17 @@ class StorageManager:
                 "metadata": chunk["metadata"]
             })
             
-        # 存储到Qdrant
-        points = []
-        for i, chunk in enumerate(chunks):
-            points.append(PointStruct(
-                id=i,
-                vector=chunk["embedding"],
-                payload={
-                    "text": chunk["text"],
-                    **chunk["metadata"]
-                }
-            ))
-            
-        self.qdrant_client.upsert(
-            collection_name=QDRANT_COLLECTION_NAME,
-            points=points
+        # 存储到ChromaDB
+        ids = [str(i) for i in range(len(chunks))]
+        embeddings = [chunk["embedding"] for chunk in chunks]
+        texts = [chunk["text"] for chunk in chunks]
+        metadatas = [chunk["metadata"] for chunk in chunks]
+        
+        self.collection.add(
+            ids=ids,
+            embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas
         )
         
     def get_last_sync_time(self) -> str:
