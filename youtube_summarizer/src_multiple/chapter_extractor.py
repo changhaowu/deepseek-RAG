@@ -20,6 +20,50 @@ def timestamp_to_seconds(timestamp: str) -> int:
         return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
     return 0
 
+def merge_close_chapters(chapters: List[Dict[str, any]], min_duration: int = 60) -> List[Dict[str, any]]:
+    """
+    合并时间间隔过小的章节。
+    
+    Args:
+        chapters: 原始章节列表
+        min_duration: 最小章节时长（秒）
+        
+    Returns:
+        List[Dict[str, any]]: 合并后的章节列表
+    """
+    if not chapters:
+        return []
+    
+    # 按开始时间排序
+    sorted_chapters = sorted(chapters, key=lambda x: x['start_time'])
+    
+    # 合并结果
+    merged = []
+    current = sorted_chapters[0].copy()
+    
+    for next_chapter in sorted_chapters[1:]:
+        # 如果当前章节长度小于最小时长且标题相似，合并
+        duration = next_chapter['start_time'] - current['start_time']
+        titles_similar = (
+            current['title'] == next_chapter['title'] or
+            current['title'] in next_chapter['title'] or
+            next_chapter['title'] in current['title']
+        )
+        
+        if duration < min_duration and titles_similar:
+            # 保持较长/较完整的标题
+            if len(next_chapter['title']) > len(current['title']):
+                current['title'] = next_chapter['title']
+            current['end_time'] = next_chapter['end_time']
+        else:
+            merged.append(current)
+            current = next_chapter.copy()
+    
+    # 添加最后一个章节
+    merged.append(current)
+    
+    return merged
+
 def parse_chapters_from_description(description: str) -> List[Dict[str, any]]:
     """
     从视频描述中解析章节信息。
@@ -61,6 +105,9 @@ def parse_chapters_from_description(description: str) -> List[Dict[str, any]]:
     # 最后一个章节的结束时间设置为开始时间后一小时（或其他合适的值）
     if chapters:
         chapters[-1]["end_time"] = chapters[-1]["start_time"] + 3600
+    
+    # 合并时间间隔过小的章节
+    chapters = merge_close_chapters(chapters)
     
     return chapters
 
