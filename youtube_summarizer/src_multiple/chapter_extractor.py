@@ -20,6 +20,43 @@ def timestamp_to_seconds(timestamp: str) -> int:
         return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
     return 0
 
+def merge_chapters_by_timestamp(chapters: List[Dict[str, any]]) -> List[Dict[str, any]]:
+    """
+    合并时间戳相同的章节。
+    
+    Args:
+        chapters: 原始章节列表
+        
+    Returns:
+        List[Dict[str, any]]: 合并后的章节列表
+    """
+    if not chapters:
+        return []
+    
+    # 按时间戳分组
+    timestamp_groups = {}
+    for chapter in chapters:
+        start_time = chapter['start_time']
+        if start_time not in timestamp_groups:
+            timestamp_groups[start_time] = []
+        timestamp_groups[start_time].append(chapter)
+    
+    # 合并每个时间戳组的标题
+    merged = []
+    for start_time in sorted(timestamp_groups.keys()):
+        group = timestamp_groups[start_time]
+        if len(group) == 1:
+            merged.append(group[0])
+        else:
+            # 使用第一个章节作为基础
+            merged_chapter = group[0].copy()
+            # 合并所有标题
+            titles = [ch['title'] for ch in group]
+            merged_chapter['title'] = ', '.join(titles)
+            merged.append(merged_chapter)
+    
+    return merged
+
 def merge_close_chapters(chapters: List[Dict[str, any]], min_duration: int = 60) -> List[Dict[str, any]]:
     """
     合并时间间隔过小的章节。
@@ -34,6 +71,9 @@ def merge_close_chapters(chapters: List[Dict[str, any]], min_duration: int = 60)
     if not chapters:
         return []
     
+    # 先合并相同时间戳的章节
+    chapters = merge_chapters_by_timestamp(chapters)
+    
     # 按开始时间排序
     sorted_chapters = sorted(chapters, key=lambda x: x['start_time'])
     
@@ -41,19 +81,14 @@ def merge_close_chapters(chapters: List[Dict[str, any]], min_duration: int = 60)
     merged = []
     current = sorted_chapters[0].copy()
     
-    for next_chapter in sorted_chapters[1:]:
-        # 如果当前章节长度小于最小时长且标题相似，合并
-        duration = next_chapter['start_time'] - current['start_time']
-        titles_similar = (
-            current['title'] == next_chapter['title'] or
-            current['title'] in next_chapter['title'] or
-            next_chapter['title'] in current['title']
-        )
+    for i, next_chapter in enumerate(sorted_chapters[1:], 1):
+        # 计算下一个章节的持续时间
+        next_duration = (sorted_chapters[i+1]['start_time'] if i < len(sorted_chapters)-1 
+                        else next_chapter['start_time'] + 3600) - next_chapter['start_time']
         
-        if duration < min_duration and titles_similar:
-            # 保持较长/较完整的标题
-            if len(next_chapter['title']) > len(current['title']):
-                current['title'] = next_chapter['title']
+        # 如果下一个章节的持续时间小于最小时长，合并标题
+        if next_duration < min_duration:
+            current['title'] = f"{current['title']}, {next_chapter['title']}"
             current['end_time'] = next_chapter['end_time']
         else:
             merged.append(current)
@@ -106,7 +141,7 @@ def parse_chapters_from_description(description: str) -> List[Dict[str, any]]:
     if chapters:
         chapters[-1]["end_time"] = chapters[-1]["start_time"] + 3600
     
-    # 合并时间间隔过小的章节
+    # 先合并相同时间戳的章节，再合并时长过短的章节
     chapters = merge_close_chapters(chapters)
     
     return chapters

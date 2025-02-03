@@ -31,15 +31,9 @@ def extract_video_id(url: str) -> str:
     
     raise ValueError("Could not extract video ID from URL. Please check if the URL is valid.")
 
-def get_video_info(video_url: str) -> Dict[str, str]:
+def get_video_info_fallback(video_url: str) -> Dict[str, str]:
     """
-    Get video description and other metadata from YouTube.
-    
-    Args:
-        video_url (str): YouTube video URL
-        
-    Returns:
-        Dict[str, str]: Dictionary containing video information
+    使用基本的HTTP请求获取视频信息（作为fallback方法）。
     """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -70,24 +64,145 @@ def get_video_info(video_url: str) -> Dict[str, str]:
         
         # 尝试多种方式获取描述
         description = ""
-        desc_candidates = [
-            soup.find("meta", {"property": "og:description"}),
-            soup.find("meta", {"name": "description"}),
-            soup.find("meta", {"itemprop": "description"})
-        ]
+        # desc_candidates = [
+        #     soup.find("meta", {"property": "og:description"}),
+        #     soup.find("meta", {"name": "description"}),
+        #     soup.find("meta", {"itemprop": "description"})
+        # ]
         
-        for candidate in desc_candidates:
-            if candidate and "content" in candidate.attrs:
-                description = candidate["content"]
-                break
+        # for candidate in desc_candidates:
+        #     if candidate and "content" in candidate.attrs:
+        #         description = candidate["content"]
+        #         break
         
         return {
             "title": title.strip(),
             "description": description.strip()
         }
     except Exception as e:
-        print(f"Warning: Could not fetch video info: {str(e)}")
-        return {"title": "", "description": ""} 
+        print(f"Warning: Fallback method failed: {str(e)}")
+        return {"title": "", "description": ""}
+
+def get_video_info(video_url: str) -> Dict[str, str]:
+    """
+    获取完整的视频信息，使用多种方法。
+    """
+    # 首先尝试使用fallback方法
+    info = get_video_info_fallback(video_url)
+    if info["description"] and len(info["description"]) > 100:
+        # print("flag: ", (info["description"] and len(info["description"]) > 100) == False)
+        return info
+        
+    # 如果fallback方法没有获取到足够的信息，尝试使用Selenium
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from webdriver_manager.chrome import ChromeDriverManager
+    import time
+    
+    # 如果fallback方法没有获取到足够的信息，尝试使用Selenium
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")  # 使用新的headless模式
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--remote-debugging-port=9222")
+    
+    print("Starting Chrome in headless mode...")
+    driver = None
+    
+    try:
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        print("Chrome started successfully")
+
+        print(f"Navigating to {video_url}")
+        driver.get(video_url)
+        
+        # 增加页面加载等待时间
+        wait = WebDriverWait(driver, 15)
+        
+        # # 如果标题为空，尝试从页面获取
+        # if not info["title"]:
+        #     try:
+        #         title_element = wait.until(
+        #             EC.presence_of_element_located((By.CSS_SELECTOR, "h1.ytd-video-primary-info-renderer"))
+        #         )
+        #         info["title"] = title_element.text
+        #     except Exception as e:
+        #         print(f"Failed to get title: {str(e)}")
+        
+        # 尝试点击"显示更多"按钮
+        try:
+            driver.execute_script("window.scrollTo(0, 500)")
+            time.sleep(2)
+            
+            selectors = [
+                "tp-yt-paper-button#expand",
+                "ytd-button-renderer#expand",
+                "ytd-text-inline-expander#expand",
+                "//button[contains(text(), '显示更多') or contains(text(), 'Show more')]"
+            ]
+            
+            for selector in selectors:
+                try:
+                    if selector.startswith("//"):
+                        more_button = driver.find_element(By.XPATH, selector)
+                    else:
+                        more_button = driver.find_element(By.CSS_SELECTOR, selector)
+                    driver.execute_script("arguments[0].click();", more_button)
+                    print("Successfully clicked 'Show more' button")
+                    time.sleep(2)
+                    break
+                except:
+                    continue
+        except Exception as e:
+            print(f"Failed to click 'Show more' button: {str(e)}")
+        
+        # 获取描述
+        try:
+            desc_selectors = [
+                "ytd-video-secondary-info-renderer #description",
+                "ytd-expander#description",
+                "#description-inline-expander",
+                "//div[@id='description']",
+                "//div[contains(@class, 'ytd-expandable-video-description')]"
+            ]
+            
+            for selector in desc_selectors:
+                try:
+                    if selector.startswith("//"):
+                        desc_element = driver.find_element(By.XPATH, selector)
+                    else:
+                        desc_element = driver.find_element(By.CSS_SELECTOR, selector)
+                    # description = desc_element.text
+                    # if description and len(description) > len(info["description"]):
+                    #     info["description"] = description
+                    info["description"] = desc_element.text
+                    print("Description found successfully")
+                    break
+                except:
+                    continue
+        except Exception as e:
+            print(f"Failed to get description: {str(e)}")
+        
+        return info
+        
+    except Exception as e:
+        print(f"Selenium method failed: {str(e)}")
+        return info
+    
+    finally:
+        if driver:
+            try:
+                driver.quit()
+                print("Chrome closed successfully")
+            except:
+                print("Failed to close Chrome properly")
 
 def clean_description(description: str) -> str:
     """
