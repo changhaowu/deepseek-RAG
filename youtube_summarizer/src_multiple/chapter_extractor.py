@@ -164,17 +164,21 @@ def get_youtube_chapters(video_url: str, video_description: str = "") -> List[Di
             return chapters
     
     # 如果描述中没有找到章节，尝试使用Selenium
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")  # 使用新的headless模式
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--remote-debugging-port=9222")
     
-    print("Starting Chrome in headless mode...")
+    print("Attempting to start Chrome in headless mode...")
     driver = None
     try:
         service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        print("Chrome started successfully")
+        
         print(f"Navigating to {video_url}")
         driver.get(video_url)
         
@@ -205,7 +209,8 @@ def get_youtube_chapters(video_url: str, video_description: str = "") -> List[Di
                             timestamp = element.get_attribute("data-timestamp") or \
                                       element.get_attribute("href").split("t=")[-1] or \
                                       element.find_element(By.CSS_SELECTOR, ".timestamp").text
-                        except:
+                        except Exception as e:
+                            print(f"Failed to get timestamp for chapter '{title}': {str(e)}")
                             continue
                             
                         if title and timestamp:
@@ -213,22 +218,26 @@ def get_youtube_chapters(video_url: str, video_description: str = "") -> List[Di
                                 "title": title,
                                 "start_time": timestamp_to_seconds(timestamp)
                             })
+                    print(f"Found {len(chapters)} chapters with selector: {selector}")
                     break  # 如果找到章节就退出循环
             except Exception as e:
                 print(f"Failed with selector {selector}: {str(e)}")
                 continue
         
         # 计算每个章节的结束时间
-        for i in range(len(chapters)-1):
-            chapters[i]["end_time"] = chapters[i+1]["start_time"]
-        
-        # 最后一个章节的结束时间设置为视频结束
         if chapters:
+            chapters.sort(key=lambda x: x["start_time"])
+            for i in range(len(chapters)-1):
+                chapters[i]["end_time"] = chapters[i+1]["start_time"]
+            
+            # 最后一个章节的结束时间设置为视频结束
             try:
                 duration_element = driver.find_element(By.CSS_SELECTOR, ".ytp-time-duration")
                 total_duration = timestamp_to_seconds(duration_element.text)
                 chapters[-1]["end_time"] = total_duration
-            except:
+                print(f"Set last chapter end time to video duration: {total_duration} seconds")
+            except Exception as e:
+                print(f"Failed to get video duration: {str(e)}")
                 # 如果无法获取视频总时长，设置一个较大的值
                 chapters[-1]["end_time"] = chapters[-1]["start_time"] + 3600
         
@@ -240,5 +249,8 @@ def get_youtube_chapters(video_url: str, video_description: str = "") -> List[Di
         
     finally:
         if driver:
-            driver.quit()
-            print("Chrome closed successfully") 
+            try:
+                driver.quit()
+                print("Chrome closed successfully")
+            except Exception as e:
+                print(f"Failed to close Chrome properly: {str(e)}") 

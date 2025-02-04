@@ -67,10 +67,10 @@ def main():
         
         # 获取视频信息和字幕
         print("\n正在获取视频信息和字幕...")
-        transcript, video_info = get_transcript(video_url)
+        transcript, summary_info, video_info = get_transcript(video_url)
 
-        # 输出视频信息
-        print(video_info)
+        # 输出summary_info信息
+        print(summary_info)
         
         # 首先尝试从描述中解析章节
         print("\n正在从视频描述中解析章节...")

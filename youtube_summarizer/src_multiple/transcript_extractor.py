@@ -90,7 +90,6 @@ def get_video_info(video_url: str) -> Dict[str, str]:
     # 首先尝试使用fallback方法
     info = get_video_info_fallback(video_url)
     if info["description"] and len(info["description"]) > 100:
-        # print("flag: ", (info["description"] and len(info["description"]) > 100) == False)
         return info
         
     # 如果fallback方法没有获取到足够的信息，尝试使用Selenium
@@ -112,7 +111,7 @@ def get_video_info(video_url: str) -> Dict[str, str]:
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--remote-debugging-port=9222")
     
-    print("Starting Chrome in headless mode...")
+    print("Attempting to start Chrome in headless mode...")
     driver = None
     
     try:
@@ -125,16 +124,6 @@ def get_video_info(video_url: str) -> Dict[str, str]:
         
         # 增加页面加载等待时间
         wait = WebDriverWait(driver, 15)
-        
-        # # 如果标题为空，尝试从页面获取
-        # if not info["title"]:
-        #     try:
-        #         title_element = wait.until(
-        #             EC.presence_of_element_located((By.CSS_SELECTOR, "h1.ytd-video-primary-info-renderer"))
-        #         )
-        #         info["title"] = title_element.text
-        #     except Exception as e:
-        #         print(f"Failed to get title: {str(e)}")
         
         # 尝试点击"显示更多"按钮
         try:
@@ -158,7 +147,8 @@ def get_video_info(video_url: str) -> Dict[str, str]:
                     print("Successfully clicked 'Show more' button")
                     time.sleep(2)
                     break
-                except:
+                except Exception as e:
+                    print(f"Failed to click button with selector {selector}: {str(e)}")
                     continue
         except Exception as e:
             print(f"Failed to click 'Show more' button: {str(e)}")
@@ -179,13 +169,11 @@ def get_video_info(video_url: str) -> Dict[str, str]:
                         desc_element = driver.find_element(By.XPATH, selector)
                     else:
                         desc_element = driver.find_element(By.CSS_SELECTOR, selector)
-                    # description = desc_element.text
-                    # if description and len(description) > len(info["description"]):
-                    #     info["description"] = description
                     info["description"] = desc_element.text
-                    print("Description found successfully")
+                    print(f"Description found successfully with selector: {selector}")
                     break
-                except:
+                except Exception as e:
+                    print(f"Failed to get description with selector {selector}: {str(e)}")
                     continue
         except Exception as e:
             print(f"Failed to get description: {str(e)}")
@@ -201,8 +189,8 @@ def get_video_info(video_url: str) -> Dict[str, str]:
             try:
                 driver.quit()
                 print("Chrome closed successfully")
-            except:
-                print("Failed to close Chrome properly")
+            except Exception as e:
+                print(f"Failed to close Chrome properly: {str(e)}")
 
 def clean_description(description: str) -> str:
     """
@@ -312,6 +300,7 @@ def get_transcript(video_url: str) -> Tuple[List[Dict[str, Union[str, float]]], 
         if not summary_info["title"] and video_info["title"]:
             summary_info["title"] = video_info["title"]
         
-        return transcript, summary_info
+        return transcript, summary_info, video_info
+    
     except Exception as e:
         raise Exception(f"Failed to get transcript: {str(e)}") 
